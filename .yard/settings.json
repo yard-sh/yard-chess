@@ -17,7 +17,7 @@
       ]
     }
   ],
-  "landing_page": { "dir": ".yard/landing-page" },
+  "landing_page": { "type": "custom", "dir": ".yard/landing-page" },
   "migrations": { "dir": ".yard/migrations" },
   "pricing": {
     "tiers": [
