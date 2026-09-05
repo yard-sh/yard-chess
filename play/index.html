@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Yard Chess</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#/">
+        <span class="brand-mark" aria-hidden="true">&#9822;</span>
+        <span>Yard Chess</span>
+      </a>
+
+      <button id="profile-btn" class="profile-btn" type="button" aria-haspopup="dialog">
+        <span class="avatar" id="avatar" aria-hidden="true"></span>
+        <span class="profile-meta">
+          <span class="profile-name" id="profile-name">Signing in&hellip;</span>
+          <span class="profile-record" id="profile-record"></span>
+        </span>
+      </button>
+    </header>
+
+    <main>
+      <!-- ── Lobby ────────────────────────────────────────────────────── -->
+      <section class="view lobby" id="view-lobby">
+        <div class="lobby-hero">
+          <h1>Play someone, anywhere.</h1>
+          <p class="lede">
+            Start a match, send the link to whoever you want to play. They open it and
+            it&rsquo;s their move.
+          </p>
+        </div>
+
+        <div class="panel create-panel">
+          <h2 class="panel-title">New match</h2>
+          <div class="field">
+            <span class="field-label">Time control</span>
+            <div class="chips" id="time-controls" role="radiogroup" aria-label="Time control">
+              <button class="chip" type="button" role="radio" data-minutes="5" data-increment="0">
+                <strong>5 min</strong><span>Blitz</span>
+              </button>
+              <button
+                class="chip is-selected"
+                type="button"
+                role="radio"
+                aria-checked="true"
+                data-minutes="10"
+                data-increment="5"
+              >
+                <strong>10 | 5</strong><span>Rapid</span>
+              </button>
+              <button class="chip" type="button" role="radio" data-minutes="30" data-increment="0">
+                <strong>30 min</strong><span>Classical</span>
+              </button>
+              <button class="chip" type="button" role="radio" data-minutes="0" data-increment="0">
+                <strong>&infin;</strong><span>No clock</span>
+              </button>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-lg" id="create-btn" type="button">
+            Create match
+          </button>
+          <p class="hint" id="create-hint">You&rsquo;ll get a link to share.</p>
+        </div>
+
+        <div class="panel history-panel" id="lobby-history" hidden>
+          <h2 class="panel-title">Recent games</h2>
+          <ul class="game-list" id="lobby-games"></ul>
+        </div>
+      </section>
+
+      <!-- ── Game ─────────────────────────────────────────────────────── -->
+      <section class="view game" id="view-game" hidden>
+        <div class="board-column">
+          <div class="captured captured-top" id="captured-top"></div>
+          <div class="board-frame">
+            <div class="board" id="board" role="grid" aria-label="Chess board"></div>
+            <div class="board-veil" id="board-veil" hidden></div>
+          </div>
+          <div class="captured captured-bottom" id="captured-bottom"></div>
+        </div>
+
+        <aside class="side">
+          <div class="seat" id="seat-top">
+            <span class="dot" data-connected="false"></span>
+            <span class="seat-name">&mdash;</span>
+            <span class="clock">&ndash;&ndash;:&ndash;&ndash;</span>
+          </div>
+
+          <div class="status" id="status">
+            <p class="status-line" id="status-line">Connecting&hellip;</p>
+            <p class="status-sub" id="status-sub"></p>
+          </div>
+
+          <div class="seat" id="seat-bottom">
+            <span class="dot" data-connected="false"></span>
+            <span class="seat-name">&mdash;</span>
+            <span class="clock">&ndash;&ndash;:&ndash;&ndash;</span>
+          </div>
+
+          <div class="share" id="share" hidden>
+            <label class="field-label" for="share-input">Send this to your opponent</label>
+            <div class="share-row">
+              <input id="share-input" type="text" readonly />
+              <button class="btn" id="copy-btn" type="button">Copy</button>
+            </div>
+            <button class="linkish" id="second-seat-btn" type="button" hidden>
+              Or take the other seat yourself
+            </button>
+          </div>
+
+          <div class="moves-wrap">
+            <ol class="moves" id="moves"></ol>
+          </div>
+
+          <div class="actions" id="actions">
+            <button class="btn" id="draw-btn" type="button">Offer draw</button>
+            <button class="btn btn-danger" id="resign-btn" type="button">Resign</button>
+            <button class="btn btn-primary" id="rematch-btn" type="button" hidden>Rematch</button>
+          </div>
+
+          <div class="offer" id="offer" hidden>
+            <p id="offer-text">Your opponent offers a draw.</p>
+            <div class="offer-actions">
+              <button class="btn btn-primary" id="accept-draw" type="button">Accept</button>
+              <button class="btn" id="decline-draw" type="button">Decline</button>
+            </div>
+          </div>
+
+          <a class="linkish back" href="#/">&larr; Back to lobby</a>
+        </aside>
+      </section>
+    </main>
+
+    <p class="toast" id="toast" hidden></p>
+
+    <!-- ── Profile dialog ─────────────────────────────────────────────── -->
+    <dialog id="profile-dialog" class="dialog">
+      <form method="dialog" class="dialog-close-form">
+        <button class="icon-btn" aria-label="Close">&times;</button>
+      </form>
+
+      <div class="dialog-head">
+        <span class="avatar avatar-lg" id="dialog-avatar" aria-hidden="true"></span>
+        <div>
+          <h2 id="dialog-name">Player</h2>
+          <p class="muted" id="dialog-email"></p>
+        </div>
+      </div>
+
+      <div class="record" id="record">
+        <div class="record-cell"><strong id="rec-wins">0</strong><span>Wins</span></div>
+        <div class="record-cell"><strong id="rec-losses">0</strong><span>Losses</span></div>
+        <div class="record-cell"><strong id="rec-draws">0</strong><span>Draws</span></div>
+      </div>
+      <p class="muted record-total" id="rec-total">No games yet.</p>
+
+      <form class="name-form" id="name-form">
+        <label class="field-label" for="name-input">Display name</label>
+        <div class="share-row">
+          <input id="name-input" type="text" maxlength="32" required />
+          <button class="btn" type="submit">Save</button>
+        </div>
+      </form>
+
+      <div class="dialog-section">
+        <h3 class="panel-title">Recent games</h3>
+        <ul class="game-list" id="dialog-games">
+          <li class="muted empty">Nothing here yet.</li>
+        </ul>
+      </div>
+    </dialog>
+
+    <!-- ── Promotion picker ───────────────────────────────────────────── -->
+    <dialog id="promotion-dialog" class="dialog dialog-sm">
+      <h2 class="promo-title">Promote to</h2>
+      <div class="promo-row" id="promo-row"></div>
+    </dialog>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

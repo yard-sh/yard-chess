@@ -1,0 +1,136 @@
+:root {
+  color-scheme: dark;
+  --bg: #141210;
+  --surface: #1d1a16;
+  --line: #322b24;
+  --ink: #f3ece1;
+  --ink-2: #a99f92;
+  --ink-3: #6f665b;
+  --gold: #d8a657;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  background-image: radial-gradient(
+    ellipse 80% 55% at 50% -10%,
+    rgba(216, 166, 87, 0.13),
+    transparent 70%
+  );
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 88px 24px 64px;
+}
+
+.hero {
+  text-align: center;
+  padding-bottom: 64px;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.mark {
+  font-size: 17px;
+  line-height: 1;
+  color: var(--gold);
+}
+
+h1 {
+  margin: 26px 0 0;
+  font-size: clamp(40px, 8vw, 68px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+}
+
+.tagline {
+  margin: 18px auto 0;
+  max-width: 32ch;
+  font-size: clamp(17px, 2.4vw, 20px);
+  color: var(--ink-2);
+}
+
+.cta {
+  display: inline-block;
+  margin-top: 34px;
+  padding: 14px 30px;
+  border-radius: 10px;
+  background: var(--gold);
+  color: #1c1409;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.cta:hover {
+  background: #e5b467;
+  transform: translateY(-1px);
+}
+
+.note {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.grid article {
+  padding: 28px;
+  background: var(--surface);
+}
+
+.grid h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.grid p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14.5px;
+}
+
+footer {
+  margin-top: 56px;
+  text-align: center;
+  color: var(--ink-3);
+  font-size: 13px;
+}

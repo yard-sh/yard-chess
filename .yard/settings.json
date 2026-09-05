@@ -1,0 +1,32 @@
+{
+  "version": 7,
+  "project_slug": "yard-chess",
+  "ignore_files": [],
+  "services": [
+    {
+      "dir": "play",
+      "name": "play",
+      "url": "/play",
+      "access": "authenticated",
+      "database_access": true,
+      "objects": [
+        {
+          "class": "Game",
+          "binding": "GAMES"
+        }
+      ]
+    }
+  ],
+  "landing_page": { "dir": ".yard/landing-page" },
+  "migrations": { "dir": ".yard/migrations" },
+  "pricing": {
+    "tiers": [
+      {
+        "name": "Base",
+        "price_cents": 0,
+        "is_default": true,
+        "pricing_model": "one_time"
+      }
+    ]
+  }
+}
