@@ -7,8 +7,8 @@
 Online chess hosted end to end on Yard: create a match, send the link, play.
 Clocks with increment, resign, draw offers, rematch, and a win/loss/draw record
 per player. A static frontend, a fetch-handler backend, one realtime object per
-match, a per-project SQLite database, and buyer sign-in. There is no separate
-server, no auth code, and no build step.
+match, a per-project SQLite database, and Yard Auth for sign-in. There is no
+separate server, no auth code, and no build step.
 
 Use the link above, or paste this repository's URL into the Create from GitHub
 URL field of the Yard dashboard's Create Project dialog. Chess declares objects
@@ -110,9 +110,9 @@ serves the landing page at `http://localhost:9875/yard-chess/` and the app at
 database and each match's object stored under `.yard/dev/objects/play/`. Use
 `yard dev --port 4000` if 9875 is taken.
 
-There is no sign-in code in this repo. Yard's edge signs people in and hands the
-service trusted `X-Yard-*` headers; locally a **persona** stands in for a real
-account:
+There is no sign-in code in this repo. Yard Auth signs people in (a consent
+screen the first time, silent after that) and hands the service trusted
+`X-Yard-*` headers; locally a **persona** stands in for it:
 
 | Persona     | Who they are           |
 | ----------- | ---------------------- |
@@ -174,4 +174,5 @@ sockets while both players think costs no compute. A hibernating match with an
 armed clock alarm costs nothing until the alarm fires. The Usage page in the
 dashboard shows the month so far.
 
-Contracts: `/docs/v1/platform/services`, `/docs/v1/platform/services/objects`.
+Contracts: `/docs/v1/platform/services`, `/docs/v1/platform/services/objects`,
+`/docs/v1/platform/services/yard-auth`.
