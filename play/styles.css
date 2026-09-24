@@ -343,7 +343,7 @@ svg {
   display: flex;
   align-items: center;
   gap: 4px;
-  min-height: 18px;
+  min-height: 21px;
 }
 
 .capture-group {
@@ -351,11 +351,20 @@ svg {
 }
 
 .capture-group .piece {
-  width: 18px;
-  height: 18px;
-  margin-right: -7px;
+  width: 21px;
+  height: 21px;
+  margin-right: -8px;
   cursor: default;
-  filter: none;
+}
+
+/* Off the board the black pieces sit on charcoal, so they get a light edge. */
+.capture-group .piece.b svg {
+  stroke: #b3b1ad;
+}
+
+.capture-group .piece.b .detail,
+.capture-group .piece.b .eye {
+  display: none;
 }
 
 .capture-group .piece:last-child {

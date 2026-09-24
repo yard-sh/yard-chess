@@ -21,15 +21,15 @@ is the only gate.
     .yard/
       settings.json       every project setting: service, objects, landing page, pricing
       migrations/         applied in filename order at deploy, and by yard dev
-      landing-page/       the marketing page
+      landing-page/       the marketing page (board.js draws its static boards)
       dev/                local state written by yard dev; ignored by git
     play/                 the deployable bundle (the services[] entry with dir: play)
       _service.js         the entire backend: chess engine, fetch handler, Game object
       index.html          app shell
       app.js              routing, the socket, the side panel, the dialogs
       board.js            the board: rendering, drag or click to move
-      pieces.js           piece glyphs
-      styles.css          design tokens, light + dark
+      pieces.js           piece artwork (SVG, drawn for this project)
+      styles.css          design tokens and layout
 
 The service entry declares its mount path, access mode, database access, and the
 object class it exports:
