@@ -6,7 +6,7 @@
 // needs a promotion choice, which is a question about the destination square
 // rather than about legality.
 
-import { piecesFromFen, pieceElement, side, glyph } from "./pieces.js";
+import { piecesFromFen, pieceElement, side } from "./pieces.js";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const RANKS = [8, 7, 6, 5, 4, 3, 2, 1];
@@ -26,7 +26,7 @@ export function createBoard(root, { onMove }) {
     for (const file of FILES) {
       const name = file + rank;
       const el = document.createElement("div");
-      const dark = (FILES.indexOf(file) + rank) % 2 === 0;
+      const dark = (FILES.indexOf(file) + rank) % 2 === 1;
       el.className = `sq ${dark ? "dark" : "light"}`;
       el.dataset.square = name;
       el.setAttribute("role", "gridcell");
@@ -185,7 +185,8 @@ export function createBoard(root, { onMove }) {
       const rect = drag.pieceEl.getBoundingClientRect();
       const ghost = drag.pieceEl.cloneNode(true);
       ghost.classList.add("drag-ghost");
-      ghost.style.fontSize = `${rect.height}px`;
+      ghost.style.width = `${rect.width}px`;
+      ghost.style.height = `${rect.height}px`;
       document.body.append(ghost);
       drag.ghost = ghost;
       drag.pieceEl.classList.add("dragging");
@@ -223,12 +224,39 @@ export function createBoard(root, { onMove }) {
         paint();
       }
     },
-    promotionGlyphs(colour) {
-      return ["q", "r", "b", "n"].map((kind) => ({
-        kind,
-        glyph: glyph(kind),
-        side: colour === "white" ? "w" : "b",
-      }));
+    // The four choices as FEN letters, in the colour of the side promoting.
+    promotionPieces(colour) {
+      return ["q", "r", "b", "n"].map((kind) => (colour === "white" ? kind.toUpperCase() : kind));
     },
   };
+}
+
+// A board that only shows a position: the lobby's preview. No input, no
+// highlights, and none of the window listeners the live board installs.
+export function renderStaticBoard(root, fen) {
+  const pieces = piecesFromFen(fen);
+  const fragment = document.createDocumentFragment();
+  RANKS.forEach((rank, row) => {
+    FILES.forEach((file, column) => {
+      const el = document.createElement("div");
+      const dark = (column + rank) % 2 === 1;
+      el.className = `sq ${dark ? "dark" : "light"}`;
+      const piece = pieces[file + rank];
+      if (piece) el.append(pieceElement(piece));
+      if (row === 7) {
+        const span = document.createElement("span");
+        span.className = "coord coord-file";
+        span.textContent = file;
+        el.append(span);
+      }
+      if (column === 0) {
+        const span = document.createElement("span");
+        span.className = "coord coord-rank";
+        span.textContent = String(rank);
+        el.append(span);
+      }
+      fragment.append(el);
+    });
+  });
+  root.replaceChildren(fragment);
 }

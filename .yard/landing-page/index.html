@@ -3,62 +3,168 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#262522" />
     <title data-yard="title">Yard Chess</title>
+    <meta name="description" content="Real-time chess in the browser. Start a match, send the link, play." />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <header class="nav">
+      <a class="brand" href="./">
+        <svg viewBox="0 0 45 45" aria-hidden="true">
+          <path d="M15 32.5c.5-4.5 3-7.5 5.5-10l-7 2c-2.5.5-4.5-1-4-3.5.5-2.5 3.5-5.5 6.5-8.5L17 7.5l3 3c7 0 12 4.5 12 13.5l-.5 8.5z"/>
+          <rect x="10.5" y="32" width="24" height="5.5" rx="2"/>
+        </svg>
+        <span data-yard="title">Yard Chess</span>
+      </a>
+      <nav class="nav-links" aria-label="Page">
+        <a href="#how">How it works</a>
+        <a href="#rules">Rules</a>
+        <a class="btn btn-sm" href="play/">Play</a>
+      </nav>
+    </header>
+
     <main>
+      <!-- ── Hero ──────────────────────────────────────────────────────── -->
       <section class="hero">
-        <span class="eyebrow">
-          <span class="mark" aria-hidden="true">&#9822;</span>
-          Real-time chess
-        </span>
-
-        <h1 data-yard="title">Yard Chess</h1>
-        <p class="tagline" data-yard="tagline">
-          Start a match, send the link, play. Nothing to install.
+        <h1>Play chess with anyone.<br />Just send the link.</h1>
+        <p class="lede" data-yard="tagline">
+          Start a match, share the URL, and whoever opens it takes the other seat. Nothing
+          to install, no lobby to find each other in.
         </p>
-
-        <a class="cta" href="play/">Play a game &rarr;</a>
-        <p class="note">Sign in with Yard &mdash; your record follows you.</p>
+        <div class="hero-ctas">
+          <a class="btn btn-xl" href="play/">Play now</a>
+          <a class="btn btn-xl btn-quiet" href="#how">How it works</a>
+        </div>
+        <p class="fine">Free to play &middot; Sign in with Yard Auth &middot; Your record follows you</p>
       </section>
 
-      <section class="grid">
-        <article>
-          <h2>A link is the whole invite</h2>
-          <p>
-            Create a match and you get a URL. Whoever opens it takes the other
-            seat and it&rsquo;s their move &mdash; no accounts to swap, no lobby to find
-            each other in.
-          </p>
-        </article>
-        <article>
-          <h2>Real rules, enforced</h2>
-          <p>
-            Castling, en passant, promotion, threefold repetition, the fifty-move
-            rule. Legality is decided on the server, so the board you see is the
-            board that counts.
-          </p>
-        </article>
-        <article>
-          <h2>Clocks that keep time</h2>
-          <p>
-            Blitz, rapid, classical, or no clock at all. The flag falls even if
-            you close the tab &mdash; timing lives with the game, not the browser.
-          </p>
-        </article>
-        <article>
-          <h2>A record worth having</h2>
-          <p>
-            Wins, losses and draws, with the games behind them. Click your name
-            any time to see where you stand.
-          </p>
-        </article>
+      <!-- ── The product, drawn in HTML ───────────────────────────────── -->
+      <figure class="showcase" aria-label="A match in progress">
+        <div class="table">
+          <div class="board-col">
+            <div class="bar">
+              <span class="av av-b" aria-hidden="true">MK</span>
+              <span class="who">m.kasza</span>
+              <span class="clk">4:41</span>
+            </div>
+            <div
+              class="mini-board"
+              data-coords
+              data-fen="r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R"
+              data-marks="f8 c5"
+            ></div>
+            <div class="bar">
+              <span class="av" aria-hidden="true">YOU</span>
+              <span class="who">you</span>
+              <span class="clk is-live">5:12</span>
+            </div>
+          </div>
+          <div class="panel" aria-hidden="true">
+            <p class="panel-status">Your move</p>
+            <ol class="panel-moves">
+              <li><span>1.</span><b>e4</b><b>e5</b></li>
+              <li><span>2.</span><b>Nf3</b><b>Nc6</b></li>
+              <li><span>3.</span><b>Bc4</b><b>Nf6</b></li>
+              <li><span>4.</span><b>d3</b><b>Bc5</b></li>
+              <li><span>5.</span><b class="now">&hellip;</b><b></b></li>
+            </ol>
+            <div class="panel-actions">
+              <span class="ghost-btn">&frac12; Draw</span>
+              <span class="ghost-btn">Resign</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+
+      <!-- ── How it works ─────────────────────────────────────────────── -->
+      <section class="section" id="how">
+        <h2 class="section-title">One match, three steps</h2>
+
+        <ol class="steps">
+          <li class="step">
+            <span class="step-no">1</span>
+            <h3>Pick a clock</h3>
+            <p>Blitz, rapid, classical, or none at all. Increment is added after every move.</p>
+            <div class="demo demo-clocks" aria-hidden="true">
+              <span>5 min</span><span class="on">10 | 5</span><span>30 min</span><span>&infin;</span>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-no">2</span>
+            <h3>Send the link</h3>
+            <p>The match is a URL. Text it, paste it in a chat. The first person to open it plays.</p>
+            <div class="demo demo-link" aria-hidden="true">
+              <span class="url">&hellip;/play/#/g/k3v9x2</span><span class="copy">Copy</span>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-no">3</span>
+            <h3>Play it out</h3>
+            <p>Drag or click to move. Offer a draw, resign, or ask for a rematch when it ends.</p>
+            <div class="demo demo-result" aria-hidden="true">
+              <span class="res win">Won</span><span>by checkmate</span><span class="when">2m ago</span>
+            </div>
+          </li>
+        </ol>
       </section>
 
-      <footer>
-        <span data-yard="seller.username">yard</span> &middot; built on Yard
-      </footer>
+      <!-- ── Rules and record ─────────────────────────────────────────── -->
+      <section class="section split" id="rules">
+        <div class="split-copy">
+          <h2 class="section-title">The server is the arbiter</h2>
+          <p>
+            Every move is checked where the game lives, not in your browser. The board you see
+            is the board that counts, and the clock keeps running even if both players close
+            their tabs.
+          </p>
+          <ul class="rules">
+            <li>Castling, en passant and promotion</li>
+            <li>Check, checkmate and stalemate</li>
+            <li>Threefold repetition and the fifty-move rule</li>
+            <li>Insufficient material, including on time</li>
+            <li>Flag fall enforced server-side</li>
+          </ul>
+        </div>
+
+        <div class="record-card" aria-label="Example player record">
+          <div class="record-head">
+            <span class="av" aria-hidden="true">YOU</span>
+            <div>
+              <strong>Your record</strong>
+              <span>Built from every finished game</span>
+            </div>
+          </div>
+          <div class="record-grid">
+            <div class="cell win"><strong>24</strong><span>Wins</span></div>
+            <div class="cell loss"><strong>17</strong><span>Losses</span></div>
+            <div class="cell draw"><strong>5</strong><span>Draws</span></div>
+          </div>
+          <p class="record-note">
+            Results are written once and never counted twice: reconnects and retries can&rsquo;t
+            make it drift.
+          </p>
+        </div>
+      </section>
+
+      <!-- ── Closing call ─────────────────────────────────────────────── -->
+      <section class="closer">
+        <div
+          class="mini-board mini-board-sm"
+          data-fen="6k1/5ppp/8/8/8/8/5PPP/3R2K1"
+          data-marks="d1"
+          aria-hidden="true"
+        ></div>
+        <h2>Your move.</h2>
+        <a class="btn btn-xl" href="play/">Start a match</a>
+      </section>
     </main>
+
+    <footer class="foot">
+      <span><span data-yard="seller.username">yard</span> &middot; built on Yard</span>
+      <a href="play/">Play</a>
+    </footer>
+
+    <script src="board.js"></script>
   </body>
 </html>

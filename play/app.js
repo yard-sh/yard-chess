@@ -1,7 +1,7 @@
 // Controller: routing, the WebSocket, the side panel, and the dialogs.
 
-import { createBoard } from "./board.js";
-import { glyph, side } from "./pieces.js";
+import { createBoard, renderStaticBoard } from "./board.js";
+import { pieceElement, VALUE } from "./pieces.js";
 
 /* ── Where we are ─────────────────────────────────────────────────────────
    The service is mounted under a path prefix (and one segment deeper again
@@ -35,6 +35,9 @@ let pending = null;
 let pendingTimer = null;
 let promoChoice = null;
 let clockTimer = null;
+let resignArmed = null;
+
+const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 const board = createBoard($("board"), { onMove: handleMove });
 
@@ -100,9 +103,13 @@ async function loadProfile() {
     return;
   }
   const { display_name: name, record } = profile;
+  const line = `${record.wins}W · ${record.losses}L · ${record.draws}D`;
   $("avatar").textContent = initials(name);
   $("profile-name").textContent = name;
-  $("profile-record").textContent = `${record.wins}W · ${record.losses}L · ${record.draws}D`;
+  $("profile-record").textContent = line;
+  $("lobby-avatar").textContent = initials(name);
+  $("lobby-name").textContent = name;
+  $("lobby-record").textContent = record.played ? line : "No games yet";
 }
 
 function renderGameList(target, games) {
@@ -158,6 +165,8 @@ function showLobby() {
   snapshot = null;
   $("view-game").hidden = true;
   $("view-lobby").hidden = false;
+  $("nav-play").classList.add("is-active");
+  if (!$("lobby-board").childElementCount) renderStaticBoard($("lobby-board"), START_FEN);
   const games = profile?.recent ?? [];
   $("lobby-history").hidden = games.length === 0;
   if (games.length) renderGameList($("lobby-games"), games);
@@ -202,6 +211,7 @@ $("create-btn").addEventListener("click", async () => {
 function showGame(id) {
   $("view-lobby").hidden = true;
   $("view-game").hidden = false;
+  $("nav-play").classList.remove("is-active");
   if (id === gameId && socket) return;
   disconnect();
   gameId = id;
@@ -284,12 +294,12 @@ function handleMove(from, to, needsPromotion) {
   board.lock(true);
   const row = $("promo-row");
   row.replaceChildren();
-  for (const option of board.promotionGlyphs(snapshot.you.seat)) {
+  for (const piece of board.promotionPieces(snapshot.you.seat)) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `promo-btn piece ${option.side}`;
-    button.textContent = option.glyph;
-    button.dataset.kind = option.kind;
+    button.className = "promo-btn";
+    button.dataset.kind = piece.toLowerCase();
+    button.append(pieceElement(piece));
     row.append(button);
   }
   $("promotion-dialog").showModal();
@@ -348,8 +358,8 @@ function renderPanel(snap, previous) {
 
   paintSeat($("seat-top"), snap, top);
   paintSeat($("seat-bottom"), snap, bottom);
-  $("captured-top").textContent = (snap.captured[top] ?? []).map(glyph).join("");
-  $("captured-bottom").textContent = (snap.captured[bottom] ?? []).map(glyph).join("");
+  paintCaptured($("captured-top"), snap.captured[top] ?? [], snap.captured[bottom] ?? []);
+  paintCaptured($("captured-bottom"), snap.captured[bottom] ?? [], snap.captured[top] ?? []);
 
   paintStatus(snap);
   paintMoves(snap);
@@ -363,11 +373,39 @@ function renderPanel(snap, previous) {
   }
 }
 
+// Captures are grouped by kind, cheapest first, and the side ahead on material
+// gets the difference: "+2".
+const CAPTURE_ORDER = ["p", "n", "b", "r", "q"];
+
+function paintCaptured(el, taken, lost) {
+  const worth = (list) => list.reduce((sum, piece) => sum + VALUE[piece.toLowerCase()], 0);
+  el.replaceChildren();
+  for (const kind of CAPTURE_ORDER) {
+    const group = taken.filter((piece) => piece.toLowerCase() === kind);
+    if (!group.length) continue;
+    const span = document.createElement("span");
+    span.className = "capture-group";
+    for (const piece of group) span.append(pieceElement(piece));
+    el.append(span);
+  }
+  const lead = worth(taken) - worth(lost);
+  if (lead > 0) {
+    const score = document.createElement("span");
+    score.className = "material";
+    score.textContent = `+${lead}`;
+    el.append(score);
+  }
+}
+
 function paintSeat(el, snap, seat) {
   const player = snap[seat];
+  el.dataset.color = seat;
   el.querySelector(".dot").dataset.connected = String(!!player.connected);
   el.querySelector(".seat-name").textContent =
     player.name || (seat === "white" ? "Waiting…" : "Waiting for an opponent…");
+  const avatar = el.querySelector(".seat-avatar");
+  avatar.textContent = player.name ? initials(player.name) : "?";
+  avatar.classList.toggle("is-empty", !player.name);
   el.classList.toggle("is-turn", snap.status === "active" && snap.turn === seat);
 
   const clockEl = el.querySelector(".clock");
@@ -447,20 +485,23 @@ function paintMoves(snap) {
     list.append(li);
     return;
   }
+  // One row per full move: number, white's move, black's move.
+  let row = null;
   snap.history.forEach((entry, index) => {
     if (index % 2 === 0) {
-      const no = document.createElement("li");
+      row = document.createElement("li");
+      const no = document.createElement("span");
       no.className = "no";
       no.textContent = `${index / 2 + 1}.`;
-      list.append(no);
+      row.append(no);
+      list.append(row);
     }
-    const li = document.createElement("li");
-    li.className = "san";
-    li.textContent = entry.san;
-    if (index === snap.history.length - 1) li.classList.add("latest");
-    list.append(li);
+    const san = document.createElement("span");
+    san.className = "san";
+    san.textContent = entry.san;
+    if (index === snap.history.length - 1) san.classList.add("latest");
+    row.append(san);
   });
-  if (snap.history.length % 2 === 1) list.append(document.createElement("li"));
   list.parentElement.scrollTop = list.parentElement.scrollHeight;
 }
 
@@ -503,11 +544,12 @@ function paintActions(snap) {
   const drawBtn = $("draw-btn");
   drawBtn.hidden = !playing || snap.status === "over";
   drawBtn.disabled = !active || offeredByYou;
-  drawBtn.textContent = offeredByYou ? "Draw offered" : "Offer draw";
+  drawBtn.querySelector(".label").textContent = offeredByYou ? "Draw offered" : "Offer draw";
 
   const resignBtn = $("resign-btn");
   resignBtn.hidden = !playing || snap.status === "over";
   resignBtn.disabled = !active;
+  if (!active) disarmResign();
 
   const rematchBtn = $("rematch-btn");
   const asked = snap.rematch.includes(snap.you.seat);
@@ -526,8 +568,24 @@ function paintActions(snap) {
   if (wantsRematch) $("status-sub").textContent = "Your opponent wants a rematch.";
 }
 
+// Resigning takes two clicks on the same button, a few seconds apart at most,
+// instead of a native confirm() that would freeze the clocks' repaint.
+function disarmResign() {
+  clearTimeout(resignArmed);
+  resignArmed = null;
+  $("resign-btn").classList.remove("is-armed");
+  $("resign-btn").querySelector(".label").textContent = "Resign";
+}
+
 $("resign-btn").addEventListener("click", () => {
-  if (confirm("Resign this game?")) send({ t: "resign" });
+  if (resignArmed) {
+    disarmResign();
+    send({ t: "resign" });
+    return;
+  }
+  $("resign-btn").classList.add("is-armed");
+  $("resign-btn").querySelector(".label").textContent = "Confirm resign";
+  resignArmed = setTimeout(disarmResign, 3500);
 });
 $("draw-btn").addEventListener("click", () => send({ t: "draw-offer" }));
 $("accept-draw").addEventListener("click", () => send({ t: "draw-accept" }));
@@ -536,10 +594,12 @@ $("rematch-btn").addEventListener("click", () => send({ t: "rematch" }));
 
 /* ── Dialog wiring ───────────────────────────────────────────────────────── */
 
-$("profile-btn").addEventListener("click", async () => {
-  await loadProfile();
-  openProfile();
-});
+for (const id of ["profile-btn", "nav-profile"]) {
+  $(id).addEventListener("click", async () => {
+    await loadProfile();
+    openProfile();
+  });
+}
 
 $("name-form").addEventListener("submit", async (event) => {
   event.preventDefault();
