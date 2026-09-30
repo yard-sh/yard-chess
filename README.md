@@ -6,25 +6,25 @@
 
 Online chess hosted end to end on Yard: create a match, send the link, play.
 Clocks with increment, resign, draw offers, rematch, and a win/loss/draw record
-per player. A static frontend, a fetch-handler backend, one realtime object per
+per player. A static frontend, a fetch-handler backend, one realtime room per
 match, a per-project SQLite database, and Yard Auth for sign-in. There is no
 separate server, no auth code, and no build step.
 
 Use the link above, or paste this repository's URL into the Create from GitHub
-URL field of the Yard dashboard's Create Project dialog. Chess declares objects
-(realtime rooms inside a service), which are part of Yard Pro, so creating it
+URL field of the Yard dashboard's Create Project dialog. Chess declares rooms
+(realtime state inside a service), which are part of Yard Pro, so creating it
 needs a Pro plan. The project itself is free to play: one $0 tier, so signing in
 is the only gate.
 
 ## Layout
 
     .yard/
-      settings.json       every project setting: service, objects, landing page, pricing
+      settings.json       every project setting: service, rooms, landing page, pricing
       migrations/         applied in filename order at deploy, and by yard dev
       landing-page/       the marketing page (board.js draws its static boards)
       dev/                local state written by yard dev; ignored by git
     play/                 the deployable bundle (the services[] entry with dir: play)
-      _service.js         the entire backend: chess engine, fetch handler, Game object
+      _service.js         the entire backend: chess engine, fetch handler, Game room class
       index.html          app shell
       app.js              routing, the socket, the side panel, the dialogs
       board.js            the board: rendering, drag or click to move
@@ -32,12 +32,12 @@ is the only gate.
       styles.css          design tokens and layout
 
 The service entry declares its mount path, access mode, database access, and the
-object class it exports:
+room class it exports:
 
     "services": [
       { "dir": "play", "name": "play", "url": "/play",
         "access": "authenticated", "database_access": true,
-        "objects": [{ "class": "Game", "binding": "GAMES" }] }
+        "rooms": [{ "class": "Game", "binding": "GAMES" }] }
     ]
 
 `yard push` sends that file along with the bundles, so changing how the service
@@ -59,7 +59,7 @@ frontend knows no rules at all: it highlights what it is given and sends
 `from`/`to` back. That is what keeps the project buildless, because there is no
 engine to share between two runtimes when there is only one.
 
-**One match is one object.** `_service.js` exports a class called `Game`. Yard
+**One match is one room.** `_service.js` exports a class called `Game`. Yard
 keeps one instance of it per match id, reachable through `env.GAMES`, and every
 connection to that match lands on the same instance, so it is the single place
 where moves are ordered and validated. The handler forwards the upgrade by id
@@ -67,7 +67,7 @@ and nothing else:
 
     return env.GAMES.get(env.GAMES.idFromName(id)).fetch(request);
 
-**All of a match's state is in `ctx.storage`.** The object hibernates whenever it
+**All of a match's state is in `ctx.storage`.** The room hibernates whenever it
 is idle and wakes with a fresh constructor, so instance fields do not survive
 between events and `this.board = ...` would be a bug. The position travels and is
 stored as FEN, which keeps that storage tiny. The clock is enforced with
@@ -80,7 +80,7 @@ over that table. Nothing increments a counter, so no reconnect, retried alarm or
 double resign can make the record drift. If the write fails, `recorded` stays
 false and an alarm retries it. Structure that outlives a match (players, display
 names, finished games) is in `env.DB`; the live position, clocks and sockets stay
-in the object.
+in the room.
 
 **Seats, and playing yourself.** The first two people to open a match link take
 white and black; anyone after that watches. Reconnecting returns you to your own
@@ -107,7 +107,7 @@ Two details worth knowing before editing:
 
 serves the landing page at `http://localhost:9875/yard-chess/` and the app at
 `http://localhost:9875/yard-chess/play/`, with the migration applied to a local
-database and each match's object stored under `.yard/dev/objects/play/`. Use
+database and each match's room stored under `.yard/dev/rooms/play/`. Use
 `yard dev --port 4000` if 9875 is taken.
 
 There is no sign-in code in this repo. Yard Auth signs people in (a consent
@@ -133,8 +133,8 @@ yourself" to hold both seats at once.
 Every save restarts the local runtime, which drops every open socket; the client
 reconnects on its own, which is the same path it takes when a hosted session
 reaches its 24-hour limit. `yard dev --reset-db` starts from an empty database
-and `--reset-objects` deletes every stored match, and the two are independent: a
-game row without its object is just a finished result with no live board.
+and `--reset-rooms` deletes every stored match, and the two are independent: a
+game row without its room is just a finished result with no live board.
 
 ## Shipping
 
@@ -167,12 +167,12 @@ database and its own matches.
 
 ## Usage and cost
 
-Objects are metered: requests, compute time while a message is being handled, and
+Rooms are metered: requests, compute time while a message is being handled, and
 stored bytes, with a monthly allowance on Pro and overage past it. An inbound
 socket message counts as one twentieth of a request, and a match that is holding
 sockets while both players think costs no compute. A hibernating match with an
 armed clock alarm costs nothing until the alarm fires. The Usage page in the
 dashboard shows the month so far.
 
-Contracts: `/docs/v1/platform/services`, `/docs/v1/platform/services/objects`,
+Contracts: `/docs/v1/platform/services`, `/docs/v1/platform/services/rooms`,
 `/docs/v1/platform/services/yard-auth`.

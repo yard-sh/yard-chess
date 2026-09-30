@@ -3,9 +3,9 @@
 //   1. Chess engine   — the only source of chess truth in the app. Clients get a
 //                       legal-move map pushed to them and know no rules at all.
 //   2. Fetch handler  — HTTP routes + the WebSocket upgrade, forwarded by game id.
-//   3. Game object    — one live match: holds both sockets, all state in storage.
+//   3. Game room      — one live match: holds both sockets, all state in storage.
 //
-// Nothing here may rely on instance fields surviving between events: an object
+// Nothing here may rely on instance fields surviving between events: a room
 // hibernates whenever it is idle and wakes with a fresh constructor.
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -13,7 +13,7 @@
 
    Board is a flat 64-array, index 0 = a8 … 63 = h1. Pieces are single letters,
    uppercase white / lowercase black, empty squares are null. Positions travel
-   and are stored as FEN, which keeps the object's storage tiny.
+   and are stored as FEN, which keeps the room's storage tiny.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const WHITE = "w";
@@ -548,7 +548,7 @@ async function recentGames(db, userId, limit = 8) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   3. FETCH HANDLER — routes only. All fan-out happens inside the Game object.
+   3. FETCH HANDLER — routes only. All fan-out happens inside the Game room.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default {
@@ -561,7 +561,7 @@ export default {
     if (path === "/ws" && request.method === "GET") {
       const id = url.searchParams.get("game");
       if (!id) return new Response("game is required", { status: 400 });
-      return gameObject(env, id).fetch(request);
+      return gameRoom(env, id).fetch(request);
     }
 
     if (path.startsWith("/api/")) {
@@ -577,7 +577,7 @@ export default {
   },
 };
 
-const gameObject = (env, id) => env.GAMES.get(env.GAMES.idFromName(id));
+const gameRoom = (env, id) => env.GAMES.get(env.GAMES.idFromName(id));
 
 async function handleAPI(request, env, url) {
   const path = url.pathname;
@@ -617,7 +617,7 @@ async function handleAPI(request, env, url) {
     const incMs = Math.max(0, Math.min(60, Number(body.increment) || 0)) * 1000;
     const player = await ensurePlayer(db, me.userId, me.email);
     const id = newGameId();
-    await gameObject(env, id).fetch(
+    await gameRoom(env, id).fetch(
       new Request("https://game.internal/_create", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -635,14 +635,14 @@ async function handleAPI(request, env, url) {
 
   const summary = path.match(/^\/api\/games\/([a-z0-9]+)$/);
   if (summary && request.method === "GET") {
-    return gameObject(env, summary[1]).fetch(new Request("https://game.internal/_summary"));
+    return gameRoom(env, summary[1]).fetch(new Request("https://game.internal/_summary"));
   }
 
   return json({ error: "Not found" }, 404);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   4. THE GAME OBJECT — one live match.
+   4. THE GAME ROOM — one live match.
 
    Every visitor of a game id reaches this same instance, so it owns both
    sockets and every broadcast. It handles one event at a time, so there is no
@@ -812,7 +812,7 @@ export class Game {
 
     let { meta } = await this.readAll();
     if (!meta) {
-      // A link that outlived its object (or was hand-typed) still opens as a
+      // A link that outlived its room (or was hand-typed) still opens as a
       // playable game rather than a dead end.
       meta = this.freshMeta(url.searchParams.get("game") ?? "", DEFAULT_BASE_MS, DEFAULT_INC_MS);
       await this.reset(meta);
