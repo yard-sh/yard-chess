@@ -12,9 +12,9 @@ separate server, no auth code, and no build step.
 
 Use the link above, or paste this repository's URL into the Create from GitHub
 URL field of the Yard dashboard's Create Project dialog. Chess declares rooms
-(realtime state inside a service), which are part of Yard Pro, so creating it
-needs a Pro plan. The project itself is free to play: one $0 tier, so signing in
-is the only gate.
+(realtime state inside a service), which are part of Yard Basic and Pro, so
+creating it needs one of those plans. The project itself is free to play: one $0
+tier, so signing in is the only gate.
 
 ## Layout
 
@@ -168,11 +168,11 @@ database and its own matches.
 ## Usage and cost
 
 Rooms are metered: requests, compute time while a message is being handled, and
-stored bytes, with a monthly allowance on Pro and overage past it. An inbound
-socket message counts as one twentieth of a request, and a match that is holding
-sockets while both players think costs no compute. A hibernating match with an
-armed clock alarm costs nothing until the alarm fires. The Usage page in the
-dashboard shows the month so far.
+stored bytes, with a monthly allowance on Basic and Pro and overage past it. An
+inbound socket message counts as one twentieth of a request, and a match that is
+holding sockets while both players think costs no compute. A hibernating match
+with an armed clock alarm costs nothing until the alarm fires. The Usage page in
+the dashboard shows the month so far.
 
 Contracts: `/docs/v1/platform/services`, `/docs/v1/platform/services/rooms`,
 `/docs/v1/platform/services/yard-auth`.
