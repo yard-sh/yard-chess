@@ -24,20 +24,20 @@ tier, so signing in is the only gate.
       landing-page/       the marketing page (board.js draws its static boards)
       dev/                local state written by yard dev; ignored by git
     play/                 the deployable bundle (the services[] entry with dir: play)
-      _service.js         the entire backend: chess engine, fetch handler, Game room class
+      _service.js         the entire backend: chess engine, fetch handler, Game room type
       index.html          app shell
       app.js              routing, the socket, the side panel, the dialogs
       board.js            the board: rendering, drag or click to move
       pieces.js           piece artwork (SVG, drawn for this project)
       styles.css          design tokens and layout
 
-The service entry declares its mount path, access mode, database access, and the
-room class it exports:
+The service entry declares its mount path, access mode, database access, and its
+room type:
 
     "services": [
       { "dir": "play", "name": "play", "url": "/play",
         "access": "authenticated", "database_access": true,
-        "rooms": [{ "class": "Game", "binding": "GAMES" }] }
+        "rooms": [{ "type": "Game", "binding": "GAMES" }] }
     ]
 
 `yard push` sends that file along with the bundles, so changing how the service
@@ -96,7 +96,7 @@ Two details worth knowing before editing:
   page's own URL, never from a leading slash. Match selection lives in
   `location.hash` for the same reason. `yard service check` lints fetches and
   links, not socket URLs.
-- **The class name is the identity.** Renaming `Game` in `settings.json` drops
+- **The type name is the identity.** Renaming `Game` in `settings.json` drops
   every match in progress at the next deploy; `yard push` warns before it does.
   Finished games are rows in the database and survive. Change the `binding` if
   only the name in `env` should change.
