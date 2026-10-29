@@ -96,11 +96,13 @@ visitor with neither id, such as a socket opened from another site, can only
 watch.
 
 **Seats, and playing yourself.** The first two people to open a match link take
-white and black; anyone after that watches. Reconnecting returns you to your own
-seat. `?seat=` lets one person deliberately hold both, which is what the "Or take
-the other seat yourself" button on the waiting screen uses. A game where both
-seats are the same player is not a real result and is never written to anyone's
-record. Snapshots say whether a seat is taken, never who holds it, because a
+white and black; anyone after that watches. A seat belongs to the player, not to
+a socket, so reconnecting or opening another tab returns you to your own seat.
+"Or play both sides yourself" on the waiting screen gives the empty seat to the
+same player, who then moves whichever side is to move, from any tab; there are
+no draw offers in such a game, and resigning resigns the side to move. A game
+where both seats are the same player is not a real result and is never written
+to anyone's record. Snapshots say whether a seat is taken, never who holds it, because a
 guest id is all it takes to act as that guest.
 
 Two details worth knowing before editing:
@@ -143,7 +145,7 @@ A persona is a cookie, and so is the guest id, so both are per browser profile:
 two tabs in the same window are the same player. To get two players onto one
 board, open the match link in a normal window and again in a private window
 (two guests, or pick a different persona in the second), or create a match and
-click "Or take the other seat yourself" to hold both seats at once.
+click "Or play both sides yourself" to hold both seats at once.
 
 Every save restarts the local runtime, which drops every open socket; the client
 reconnects on its own, which is the same path it takes when a hosted session

@@ -115,8 +115,7 @@ export function createBoard(root, { onMove }) {
       !locked &&
       snapshot &&
       snapshot.status === "active" &&
-      (seat === "white" || seat === "black") &&
-      snapshot.turn === seat
+      (seat === "both" || snapshot.turn === seat)
     );
   }
 

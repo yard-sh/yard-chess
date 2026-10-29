@@ -710,6 +710,18 @@ function safeAttachment(ws) {
   }
 }
 
+// A seat belongs to the player, not to a socket, so every tab a player has open
+// plays their seat. Someone holding both seats plays whichever side is to move.
+function seatOf(meta, playerId) {
+  if (!meta || !playerId) return "spectator";
+  const white = meta.whiteId === playerId;
+  const black = meta.blackId === playerId;
+  if (white && black) return "both";
+  return white ? "white" : black ? "black" : "spectator";
+}
+
+const plays = (seat, side) => seat === side || seat === "both";
+
 // Remaining time right now, counting down the side whose clock is running.
 function clockNow(meta, clock, turnSeat, now) {
   let whiteMs = clock.whiteMs;
@@ -856,7 +868,6 @@ export class Game {
   async accept(request, url) {
     const me = identity(request);
     const playerId = me.playerId;
-    const seatHint = url.searchParams.get("seat");
 
     let { meta } = await this.readAll();
     if (!meta) {
@@ -880,49 +891,44 @@ export class Game {
     }
 
     // Reconnecting returns you to your seat. Otherwise you take the first open
-    // one, and `?seat=` lets one person deliberately hold both, which is what
-    // makes a solo two-tab test work. A visitor with no identity can only watch.
-    const openSeat = (seat) => (seat === "white" ? !meta.whiteId : !meta.blackId);
-    const ownSeat = (seat) => (seat === "white" ? meta.whiteId : meta.blackId) === playerId;
-    let seat = "spectator";
-    if (playerId) {
-      if ((seatHint === "white" || seatHint === "black") && (openSeat(seatHint) || ownSeat(seatHint))) {
-        seat = seatHint;
-      } else if (meta.whiteId === playerId) seat = "white";
-      else if (meta.blackId === playerId) seat = "black";
-      else if (!meta.whiteId) seat = "white";
+    // one. A visitor with no identity can only watch.
+    let seat = seatOf(meta, playerId);
+    if (playerId && seat === "spectator") {
+      if (!meta.whiteId) seat = "white";
       else if (!meta.blackId) seat = "black";
     }
-
-    if (seat === "white" && (meta.whiteId !== playerId || meta.whiteName !== name)) {
-      meta.whiteId = playerId;
-      meta.whiteName = name;
-      changed = true;
-    }
-    if (seat === "black" && (meta.blackId !== playerId || meta.blackName !== name)) {
-      meta.blackId = playerId;
-      meta.blackName = name;
+    for (const side of ["white", "black"]) {
+      if (!plays(seat, side)) continue;
+      if (meta[`${side}Id`] === playerId && meta[`${side}Name`] === name) continue;
+      meta[`${side}Id`] = playerId;
+      meta[`${side}Name`] = name;
       changed = true;
     }
 
     if (meta.status === "waiting" && meta.whiteId && meta.blackId) {
-      meta.status = "active";
-      meta.startedAt = Date.now();
+      await this.start(meta);
       changed = true;
-      if (meta.baseMs) {
-        const clock = { whiteMs: meta.baseMs, blackMs: meta.baseMs, runningSince: Date.now() };
-        await this.ctx.storage.put("clock", clock);
-        await this.armAlarm(meta, clock, "white");
-      }
     }
     if (changed) await this.ctx.storage.put("meta", meta);
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server, playerId ? [playerId] : []);
-    server.serializeAttachment({ playerId, seat, name });
+    server.serializeAttachment({ playerId, name });
     await this.broadcast();
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  // Both seats are filled: the game is on and white's clock starts. The caller
+  // stores meta.
+  async start(meta) {
+    meta.status = "active";
+    meta.startedAt = Date.now();
+    if (meta.baseMs) {
+      const clock = { whiteMs: meta.baseMs, blackMs: meta.baseMs, runningSince: Date.now() };
+      await this.ctx.storage.put("clock", clock);
+      await this.armAlarm(meta, clock, "white");
+    }
   }
 
   async webSocketMessage(ws, message) {
@@ -933,25 +939,28 @@ export class Game {
     } catch {
       return;
     }
-    const att = safeAttachment(ws) ?? { seat: "spectator", playerId: "", name: "" };
+    const att = safeAttachment(ws) ?? { playerId: "", name: "" };
     const store = await this.readAll();
     if (!store.meta) return;
+    const seat = seatOf(store.meta, att.playerId);
 
     switch (msg.t) {
       case "sync":
-        return this.sendState(ws, await this.snapshot(store));
+        return this.sendState(ws, this.snapshot(store), store.meta);
+      case "play-both":
+        return this.onPlayBoth(att, seat, store);
       case "move":
-        return this.onMove(ws, att, store, msg);
+        return this.onMove(ws, seat, store, msg);
       case "resign":
-        return this.onResign(ws, att, store);
+        return this.onResign(ws, seat, store);
       case "draw-offer":
-        return this.onDrawOffer(ws, att, store);
+        return this.onDrawOffer(seat, store);
       case "draw-accept":
-        return this.onDrawAccept(ws, att, store);
+        return this.onDrawAccept(seat, store);
       case "draw-decline":
-        return this.onDrawDecline(ws, att, store);
+        return this.onDrawDecline(seat, store);
       case "rematch":
-        return this.onRematch(ws, att, store);
+        return this.onRematch(seat, store);
       default:
         return;
     }
@@ -1004,16 +1013,27 @@ export class Game {
 
   // ── actions ──────────────────────────────────────────────────────────────
 
-  async onMove(ws, att, store, msg) {
+  // The player waiting alone takes the empty seat too and plays both sides.
+  async onPlayBoth(att, seat, store) {
+    const { meta } = store;
+    if (meta.status !== "waiting" || (seat !== "white" && seat !== "black")) return;
+    const other = seat === "white" ? "black" : "white";
+    if (meta[`${other}Id`]) return;
+    meta[`${other}Id`] = att.playerId;
+    meta[`${other}Name`] = att.name;
+    await this.start(meta);
+    await this.ctx.storage.put("meta", meta);
+    await this.broadcast();
+  }
+
+  async onMove(ws, seat, store, msg) {
     const { meta, fen, history, reps, clock } = store;
     if (meta.status !== "active") return this.error(ws, "The game is not in play.");
-    if (att.seat !== "white" && att.seat !== "black") {
-      return this.error(ws, "You are watching this game.");
-    }
+    if (seat === "spectator") return this.error(ws, "You are watching this game.");
 
     const state = parseFEN(fen);
     const turnSeat = state.turn === WHITE ? "white" : "black";
-    if (att.seat !== turnSeat) return this.error(ws, "It is not your turn.");
+    if (!plays(seat, turnSeat)) return this.error(ws, "It is not your turn.");
 
     // A move that reaches the room after the flag fell, but before the alarm
     // did, loses on time rather than earning the increment.
@@ -1082,44 +1102,46 @@ export class Game {
     await this.broadcast();
   }
 
-  async onResign(ws, att, store) {
-    const { meta, history } = store;
+  // Playing both sides, resigning gives the game to the side not to move.
+  async onResign(ws, seat, store) {
+    const { meta, fen, history } = store;
     if (meta.status !== "active") return;
-    if (att.seat !== "white" && att.seat !== "black") {
-      return this.error(ws, "You are watching this game.");
-    }
-    await this.finish(meta, history, att.seat === "white" ? "black" : "white", "resignation");
+    if (seat === "spectator") return this.error(ws, "You are watching this game.");
+    const loser = seat === "both" ? (parseFEN(fen).turn === WHITE ? "white" : "black") : seat;
+    await this.finish(meta, history, loser === "white" ? "black" : "white", "resignation");
   }
 
-  async onDrawOffer(ws, att, store) {
+  // Draw offers need an opponent, so only a player in one seat makes or answers
+  // one.
+  async onDrawOffer(seat, store) {
     const { meta } = store;
     if (meta.status !== "active") return;
-    if (att.seat !== "white" && att.seat !== "black") return;
-    await this.ctx.storage.put("drawOffer", att.seat);
+    if (seat !== "white" && seat !== "black") return;
+    await this.ctx.storage.put("drawOffer", seat);
     await this.broadcast();
   }
 
-  async onDrawAccept(ws, att, store) {
+  async onDrawAccept(seat, store) {
     const { meta, history, drawOffer } = store;
     if (meta.status !== "active") return;
-    if (att.seat !== "white" && att.seat !== "black") return;
-    if (!drawOffer || drawOffer === att.seat) return;
+    if (seat !== "white" && seat !== "black") return;
+    if (!drawOffer || drawOffer === seat) return;
     await this.finish(meta, history, "draw", "agreement");
   }
 
-  async onDrawDecline(ws, att, store) {
+  async onDrawDecline(seat, store) {
     const { drawOffer } = store;
-    if (!drawOffer || drawOffer === att.seat) return;
+    if (seat !== "white" && seat !== "black") return;
+    if (!drawOffer || drawOffer === seat) return;
     await this.ctx.storage.put("drawOffer", null);
     await this.broadcast();
   }
 
-  async onRematch(ws, att, store) {
+  async onRematch(seat, store) {
     const { meta, rematch } = store;
-    if (meta.status !== "over") return;
-    if (att.seat !== "white" && att.seat !== "black") return;
+    if (meta.status !== "over" || seat === "spectator") return;
 
-    rematch[att.seat] = true;
+    for (const side of ["white", "black"]) if (plays(seat, side)) rematch[side] = true;
     if (!(rematch.white && rematch.black)) {
       await this.ctx.storage.put("rematch", rematch);
       return this.broadcast();
@@ -1134,26 +1156,15 @@ export class Game {
       whiteName: meta.blackName,
       blackId: meta.whiteId,
       blackName: meta.whiteName,
-      status: "active",
+      status: "waiting",
       result: null,
       reason: null,
-      startedAt: Date.now(),
+      startedAt: null,
       endedAt: null,
     };
     await this.reset(next);
-
-    for (const socket of this.ctx.getWebSockets()) {
-      const a = safeAttachment(socket);
-      if (!a) continue;
-      if (a.seat === "white") socket.serializeAttachment({ ...a, seat: "black" });
-      else if (a.seat === "black") socket.serializeAttachment({ ...a, seat: "white" });
-    }
-
-    if (next.baseMs) {
-      const clock = { whiteMs: next.baseMs, blackMs: next.baseMs, runningSince: Date.now() };
-      await this.ctx.storage.put("clock", clock);
-      await this.armAlarm(next, clock, "white");
-    }
+    await this.start(next);
+    await this.ctx.storage.put("meta", next);
     await this.broadcast();
   }
 
@@ -1251,27 +1262,27 @@ export class Game {
     await this.ctx.storage.setAlarm((clock.runningSince ?? Date.now()) + remaining);
   }
 
-  presence(exclude) {
+  presence(meta, exclude) {
     const seats = { white: false, black: false };
     let spectators = 0;
     for (const socket of this.ctx.getWebSockets()) {
       if (socket === exclude) continue;
       const att = safeAttachment(socket);
       if (!att) continue;
-      if (att.seat === "white" || att.seat === "black") seats[att.seat] = true;
-      else spectators++;
+      const seat = seatOf(meta, att.playerId);
+      if (seat === "spectator") spectators++;
+      for (const side of ["white", "black"]) if (plays(seat, side)) seats[side] = true;
     }
     return { ...seats, spectators };
   }
 
   // One full snapshot per change. The board is tiny and the client is a pure
   // function of the last snapshot, which removes every desync bug deltas have.
-  async snapshot(store, exclude) {
-    const s = store ?? (await this.readAll());
-    const { meta, fen, history, clock, drawOffer, rematch } = s;
+  snapshot(store, exclude) {
+    const { meta, fen, history, clock, drawOffer, rematch } = store;
     const state = parseFEN(fen);
     const turnSeat = state.turn === WHITE ? "white" : "black";
-    const here = this.presence(exclude);
+    const here = this.presence(meta, exclude);
     const now = Date.now();
     const last = history.length ? history[history.length - 1] : null;
 
@@ -1306,13 +1317,13 @@ export class Game {
     };
   }
 
-  sendState(ws, base) {
+  sendState(ws, base, meta) {
     const att = safeAttachment(ws) ?? {};
-    const seat = att.seat ?? "spectator";
+    const seat = seatOf(meta, att.playerId);
     // Only the side to move is sent a legal-move map. Not a secret (anyone
     // can derive it from the FEN), but a client is never handed moves it has
     // no business making, and spectators are sent nothing to click.
-    const mine = base.status === "active" && seat === base.turn;
+    const mine = base.status === "active" && plays(seat, base.turn);
     try {
       ws.send(
         JSON.stringify({
@@ -1327,10 +1338,11 @@ export class Game {
   }
 
   async broadcast(exclude) {
-    const base = await this.snapshot(null, exclude);
+    const store = await this.readAll();
+    const base = this.snapshot(store, exclude);
     for (const socket of this.ctx.getWebSockets()) {
       if (socket === exclude) continue;
-      this.sendState(socket, base);
+      this.sendState(socket, base, store.meta);
     }
   }
 

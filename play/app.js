@@ -30,7 +30,6 @@ let socket = null;
 let snapshot = null;
 let snapshotAt = 0;
 let attempts = 0;
-let seatHint = null;
 let pending = null;
 let pendingTimer = null;
 let promoChoice = null;
@@ -248,7 +247,6 @@ function showGame(id) {
   disconnect();
   gameId = id;
   snapshot = null;
-  seatHint = null;
   attempts = 0;
   setStatus("Connecting…", "");
   connect();
@@ -256,9 +254,7 @@ function showGame(id) {
 
 function connect() {
   if (!gameId) return;
-  const query = new URLSearchParams({ game: gameId });
-  if (seatHint) query.set("seat", seatHint);
-  const url = new URL(`ws?${query}`, BASE);
+  const url = new URL(`ws?${new URLSearchParams({ game: gameId })}`, BASE);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 
   let ws;
@@ -326,7 +322,7 @@ function handleMove(from, to, needsPromotion) {
   board.lock(true);
   const row = $("promo-row");
   row.replaceChildren();
-  for (const piece of board.promotionPieces(snapshot.you.seat)) {
+  for (const piece of board.promotionPieces(snapshot.turn)) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "promo-btn";
@@ -479,9 +475,12 @@ function setStatus(line, sub) {
   $("status-sub").textContent = sub ?? "";
 }
 
+const SIDE_NAME = { white: "White", black: "Black" };
+
 function paintStatus(snap) {
   const you = snap.you.seat;
-  const playing = you === "white" || you === "black";
+  const playing = you !== "spectator";
+  const solo = you === "both";
   $("status").classList.toggle("is-over", snap.status === "over");
 
   if (snap.status === "waiting") {
@@ -491,6 +490,7 @@ function paintStatus(snap) {
   if (snap.status === "over") {
     const reason = REASON_TEXT[snap.reason] ?? snap.reason ?? "";
     if (snap.result === "draw") return setStatus("Draw", reason);
+    if (solo) return setStatus(`${SIDE_NAME[snap.result]} won`, reason);
     const winnerName = snap[snap.result].name || snap.result;
     if (!playing) return setStatus(`${winnerName} won`, reason);
     return setStatus(snap.result === you ? "You won" : "You lost", reason);
@@ -498,6 +498,10 @@ function paintStatus(snap) {
 
   const turnName = snap[snap.turn].name || snap.turn;
   const check = snap.check === snap.turn;
+  if (solo) {
+    const side = SIDE_NAME[snap.turn];
+    return setStatus(`${side} to move`, check ? `${side} is in check.` : "You are playing both sides.");
+  }
   if (!playing) {
     return setStatus(`${turnName} to move`, check ? `${turnName} is in check.` : "Spectating.");
   }
@@ -559,22 +563,16 @@ $("copy-btn").addEventListener("click", async () => {
   toast("Link copied.");
 });
 
-$("second-seat-btn").addEventListener("click", () => {
-  seatHint = "black";
-  toast("Taking the black seat…");
-  const ws = socket;
-  socket = null;
-  if (ws) ws.close();
-  connect();
-});
+$("second-seat-btn").addEventListener("click", () => send({ t: "play-both" }));
 
 function paintActions(snap) {
-  const playing = snap.you.seat === "white" || snap.you.seat === "black";
+  const playing = snap.you.seat !== "spectator";
+  const solo = snap.you.seat === "both";
   const active = snap.status === "active";
   const offeredByYou = snap.drawOffer === snap.you.seat;
 
   const drawBtn = $("draw-btn");
-  drawBtn.hidden = !playing || snap.status === "over";
+  drawBtn.hidden = !playing || solo || snap.status === "over";
   drawBtn.disabled = !active || offeredByYou;
   drawBtn.querySelector(".label").textContent = offeredByYou ? "Draw offered" : "Offer draw";
 
@@ -590,13 +588,13 @@ function paintActions(snap) {
   rematchBtn.textContent = asked ? "Waiting for opponent…" : "Rematch";
 
   const offer = $("offer");
-  const incoming = snap.drawOffer && snap.drawOffer !== snap.you.seat && playing && active;
+  const incoming = snap.drawOffer && snap.drawOffer !== snap.you.seat && playing && !solo && active;
   offer.hidden = !incoming;
   if (incoming) {
     $("offer-text").textContent = `${snap[snap.drawOffer].name || "Your opponent"} offers a draw.`;
   }
 
-  const wantsRematch = snap.rematch.length === 1 && !asked && playing && snap.status === "over";
+  const wantsRematch = snap.rematch.length === 1 && !asked && playing && !solo && snap.status === "over";
   if (wantsRematch) $("status-sub").textContent = "Your opponent wants a rematch.";
 }
 
