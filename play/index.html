@@ -11,7 +11,7 @@
     <div class="shell">
       <!-- ── Navigation rail (a top bar on narrow screens) ──────────────── -->
       <nav class="rail" aria-label="Main">
-        <a class="brand" href="#/">
+        <a class="brand" href="./" data-route>
           <svg class="brand-mark" viewBox="0 0 45 45" aria-hidden="true">
             <path d="M15 32.5c.5-4.5 3-7.5 5.5-10l-7 2c-2.5.5-4.5-1-4-3.5.5-2.5 3.5-5.5 6.5-8.5L17 7.5l3 3c7 0 12 4.5 12 13.5l-.5 8.5z"/>
             <rect x="10.5" y="32" width="24" height="5.5" rx="2"/>
@@ -20,7 +20,7 @@
         </a>
 
         <div class="rail-links">
-          <a class="rail-link" href="#/" id="nav-play">
+          <a class="rail-link" href="./" id="nav-play" data-route>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 20h10M8.5 20c0-4 1.5-6.5 3.5-8.5 2 2 3.5 4.5 3.5 8.5M12 11.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
             <span>Play</span>
           </a>
@@ -33,7 +33,7 @@
         <button id="profile-btn" class="profile-btn" type="button" aria-haspopup="dialog">
           <span class="avatar" id="avatar" aria-hidden="true"></span>
           <span class="profile-meta">
-            <span class="profile-name" id="profile-name">Signing in&hellip;</span>
+            <span class="profile-name" id="profile-name">Loading&hellip;</span>
             <span class="profile-record" id="profile-record"></span>
           </span>
         </button>
@@ -93,6 +93,10 @@
                 Create match
               </button>
               <p class="hint" id="create-hint">You&rsquo;ll get a link to send. You play white.</p>
+              <p class="hint" id="guest-hint" hidden>
+                Playing as a guest. <a class="hint-link" id="guest-signin" href="__yard/auth/login">Sign in</a>
+                to keep your record.
+              </p>
             </div>
 
             <div class="card-section" id="lobby-history" hidden>
@@ -179,7 +183,7 @@
               <button class="btn btn-primary" id="rematch-btn" type="button" hidden>Rematch</button>
             </div>
 
-            <a class="linkish back" href="#/">&larr; New match</a>
+            <a class="linkish back" href="./" data-route>&larr; New match</a>
           </aside>
         </section>
       </main>
@@ -207,6 +211,11 @@
         <div class="record-cell draw"><strong id="rec-draws">0</strong><span>Draws</span></div>
       </div>
       <p class="muted record-total" id="rec-total">No games yet.</p>
+
+      <div class="account">
+        <p class="muted" id="account-text"></p>
+        <a class="btn" id="account-link" href="__yard/auth/login">Sign in</a>
+      </div>
 
       <form class="name-form" id="name-form">
         <label class="field-label" for="name-input">Display name</label>

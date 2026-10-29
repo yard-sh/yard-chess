@@ -1,5 +1,5 @@
 // Draws the static boards on the landing page. The piece artwork is a copy of
-// play/pieces.js: the app sits behind sign-in, so this page cannot load from it.
+// play/pieces.js, so the page stands on its own without the service's files.
 
 const BASE = '<rect x="10.5" y="32" width="24" height="5.5" rx="2"/>';
 

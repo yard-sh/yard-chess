@@ -7,7 +7,7 @@
       "dir": "play",
       "name": "play",
       "url": "/play",
-      "access": "authenticated",
+      "access": "public",
       "database_access": true,
       "rooms": [
         {

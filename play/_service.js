@@ -1,9 +1,9 @@
-// Yard Chess — one self-contained ES module.
+// Yard Chess: one self-contained ES module.
 //
-//   1. Chess engine   — the only source of chess truth in the app. Clients get a
-//                       legal-move map pushed to them and know no rules at all.
-//   2. Fetch handler  — HTTP routes + the WebSocket upgrade, forwarded by game id.
-//   3. Game room      — one live match: holds both sockets, all state in storage.
+//   1. Chess engine:  the only source of chess truth in the app. Clients get a
+//                     legal-move map pushed to them and know no rules at all.
+//   2. Fetch handler: HTTP routes + the WebSocket upgrade, forwarded by game id.
+//   3. Game room:     one live match: holds both sockets, all state in storage.
 //
 // Nothing here may rely on instance fields surviving between events: a room
 // hibernates whenever it is idle and wakes with a fresh constructor.
@@ -313,9 +313,19 @@ function applyMove(state, move) {
   if (move.from === 0 || move.to === 0) drop("q");
   if (move.from === 7 || move.to === 7) drop("k");
 
-  const ep = move.double
-    ? squareAt(fileOf(move.from), (rankOf(move.from) + rankOf(move.to)) / 2)
-    : null;
+  // The en-passant square is recorded only when an enemy pawn stands beside
+  // the pawn that just moved, so a double step nobody can take does not make
+  // the same position look new to the repetition count.
+  let ep = null;
+  if (move.double) {
+    const enemyPawn = turn === WHITE ? "p" : "P";
+    const file = fileOf(move.to);
+    const rank = rankOf(move.to);
+    const takeable = [-1, 1].some(
+      (df) => onBoard(file + df, rank) && board[squareAt(file + df, rank)] === enemyPawn,
+    );
+    if (takeable) ep = squareAt(file, (rankOf(move.from) + rank) / 2);
+  }
 
   const captured = move.captured !== undefined && move.captured !== null;
   return {
@@ -341,7 +351,7 @@ function legalMoves(state) {
   return legal;
 }
 
-// { "e2": ["e3", "e4"], … } — exactly what the board UI needs to highlight
+// { "e2": ["e3", "e4"], … }: exactly what the board UI needs to highlight
 // destinations without knowing a single rule.
 function legalMap(moves) {
   const map = {};
@@ -409,7 +419,7 @@ function insufficientMaterial(board) {
   if (minor.length === 2) {
     const [a, b] = minor;
     // Two bishops on the same colour complex can never mate.
-    if (a.kind === "b" && b.kind === "b" && a.color !== b.color && a.light === b.light) return true;
+    if (a.kind === "b" && b.kind === "b" && a.light === b.light) return true;
   }
   return false;
 }
@@ -438,11 +448,18 @@ const json = (data, status = 200) =>
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
   });
 
-// The edge strips inbound X-Yard-* headers, so these are trustworthy.
+// The edge strips inbound X-Yard-* headers, so these are trustworthy. A
+// signed-out visitor plays as a guest once the page has asked the edge for a
+// guest id; the prefix keeps a guest's rows apart from any account's.
 function identity(request) {
   const h = request.headers;
+  const userId = h.get("X-Yard-User-Id") || "";
+  const guestId = h.get("X-Yard-Guest-Id") || "";
+  const guest = guestId ? `guest:${guestId}` : "";
   return {
-    userId: h.get("X-Yard-User-Id") || "",
+    playerId: userId || guest,
+    userId,
+    guest,
     email: h.get("X-Yard-Email") || "",
     entitlement: h.get("X-Yard-Entitlement") || "none",
   };
@@ -457,46 +474,81 @@ function newGameId() {
   return out;
 }
 
-function defaultDisplayName(userId, email) {
-  if (email && email.includes("@")) return email.split("@")[0];
-  const base = String(userId).replace(/^dev-user-/, "").replace(/[-_]+/g, " ").trim();
-  return base ? base.replace(/\b\w/g, (c) => c.toUpperCase()) : "Player";
+function defaultDisplayName(me) {
+  if (me.email.includes("@")) return me.email.split("@")[0];
+  if (!me.userId && me.guest) return `Guest ${me.guest.slice(6, 10).toUpperCase()}`;
+  return "Player";
 }
 
-// Every entry point that knows a user id funnels through here, so a player row
-// always exists by the time anything wants to show a name.
-async function ensurePlayer(db, userId, email) {
-  const fallback = defaultDisplayName(userId, email);
-  if (!db || !userId) return { userId, email, displayName: fallback };
+// A guest who signs in keeps what they played as a guest: their games move to
+// the account, and so does their name when the account has none yet. A game
+// between the guest and this same account was one person on both sides and is
+// dropped, like any game against yourself. The guest id itself is kept, so a
+// seat taken as a guest in a match still in progress is matched on reconnect.
+async function adoptGuest(db, me) {
+  const held = await db
+    .prepare(
+      "SELECT 1 FROM players WHERE player_id = ?1 " +
+        "UNION ALL SELECT 1 FROM games WHERE white_id = ?1 OR black_id = ?1 LIMIT 1",
+    )
+    .bind(me.guest)
+    .first();
+  if (!held) return;
+  const guestDefault = defaultDisplayName({ email: "", userId: "", guest: me.guest });
+  await db.batch([
+    db
+      .prepare(
+        "DELETE FROM games WHERE (white_id = ?1 AND black_id = ?2) OR (white_id = ?2 AND black_id = ?1)",
+      )
+      .bind(me.guest, me.userId),
+    db.prepare("UPDATE games SET white_id = ?2 WHERE white_id = ?1").bind(me.guest, me.userId),
+    db.prepare("UPDATE games SET black_id = ?2 WHERE black_id = ?1").bind(me.guest, me.userId),
+    db
+      .prepare(
+        "INSERT INTO players (player_id, display_name, email, created_at, updated_at) " +
+          "SELECT ?2, CASE WHEN display_name = ?5 THEN ?6 ELSE display_name END, ?3, created_at, ?4 " +
+          "FROM players WHERE player_id = ?1 ON CONFLICT(player_id) DO NOTHING",
+      )
+      .bind(me.guest, me.userId, me.email, Date.now(), guestDefault, defaultDisplayName(me)),
+    db.prepare("DELETE FROM players WHERE player_id = ?1").bind(me.guest),
+  ]);
+}
+
+// Every entry point that knows who is asking funnels through here, so a player
+// row always exists by the time anything wants to show a name.
+async function ensurePlayer(db, me) {
+  const fallback = defaultDisplayName(me);
+  if (!db || !me.playerId) return { displayName: fallback };
+  if (me.userId && me.guest) await adoptGuest(db, me);
   const now = Date.now();
   const row = await db
-    .prepare("SELECT display_name, email FROM players WHERE user_id = ?1")
-    .bind(userId)
+    .prepare("SELECT display_name, email FROM players WHERE player_id = ?1")
+    .bind(me.playerId)
     .first();
   if (row) {
-    if (email && row.email !== email) {
+    if (me.email && row.email !== me.email) {
       await db
-        .prepare("UPDATE players SET email = ?2, updated_at = ?3 WHERE user_id = ?1")
-        .bind(userId, email, now)
+        .prepare("UPDATE players SET email = ?2, updated_at = ?3 WHERE player_id = ?1")
+        .bind(me.playerId, me.email, now)
         .run();
     }
-    return { userId, email: email || row.email, displayName: row.display_name || fallback };
+    return { displayName: row.display_name || fallback };
   }
   await db
     .prepare(
-      "INSERT INTO players (user_id, display_name, email, created_at, updated_at) " +
-        "VALUES (?1, ?2, ?3, ?4, ?4) ON CONFLICT(user_id) DO NOTHING",
+      "INSERT INTO players (player_id, display_name, email, created_at, updated_at) " +
+        "VALUES (?1, ?2, ?3, ?4, ?4) ON CONFLICT(player_id) DO NOTHING",
     )
-    .bind(userId, fallback, email, now)
+    .bind(me.playerId, fallback, me.email, now)
     .run();
-  return { userId, email, displayName: fallback };
+  return { displayName: fallback };
 }
 
 // The record is derived from the games table rather than counted into columns,
 // so it can never drift no matter how often a result write is retried.
-async function playerRecord(db, userId) {
+async function playerRecord(db, playerId) {
   const empty = { played: 0, wins: 0, losses: 0, draws: 0 };
-  if (!db || !userId) return empty;
+  if (!db || !playerId) return empty;
   const row = await db
     .prepare(
       `SELECT COUNT(*) AS played,
@@ -508,7 +560,7 @@ async function playerRecord(db, userId) {
          FROM games
         WHERE white_id = ?1 OR black_id = ?1`,
     )
-    .bind(userId)
+    .bind(playerId)
     .first();
   if (!row) return empty;
   return {
@@ -519,8 +571,8 @@ async function playerRecord(db, userId) {
   };
 }
 
-async function recentGames(db, userId, limit = 8) {
-  if (!db || !userId) return [];
+async function recentGames(db, playerId, limit = 8) {
+  if (!db || !playerId) return [];
   const { results } = await db
     .prepare(
       `SELECT id, white_id, black_id, white_name, black_name, result, reason, moves, ended_at
@@ -529,10 +581,10 @@ async function recentGames(db, userId, limit = 8) {
         ORDER BY ended_at DESC
         LIMIT ?2`,
     )
-    .bind(userId, limit)
+    .bind(playerId, limit)
     .all();
   return (results ?? []).map((row) => {
-    const asWhite = row.white_id === userId;
+    const asWhite = row.white_id === playerId;
     const outcomeFor =
       row.result === "draw" ? "draw" : (row.result === "white") === asWhite ? "win" : "loss";
     return {
@@ -548,7 +600,7 @@ async function recentGames(db, userId, limit = 8) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   3. FETCH HANDLER — routes only. All fan-out happens inside the Game room.
+   3. FETCH HANDLER: routes only. All fan-out happens inside the Game room.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default {
@@ -582,18 +634,20 @@ const gameRoom = (env, id) => env.GAMES.get(env.GAMES.idFromName(id));
 async function handleAPI(request, env, url) {
   const path = url.pathname;
   const me = identity(request);
-  if (!me.userId) return json({ error: "Sign in to play" }, 401);
+  // The page asks for a guest id and retries when it gets this.
+  if (!me.playerId) return json({ error: "Sign in or play as a guest", error_code: "no_player" }, 401);
   const db = env.DB ?? null;
 
   if (path === "/api/me" && request.method === "GET") {
-    const player = await ensurePlayer(db, me.userId, me.email);
+    const player = await ensurePlayer(db, me);
     return json({
-      user_id: me.userId,
+      player_id: me.playerId,
+      signed_in: me.userId !== "",
       email: me.email,
       display_name: player.displayName,
       entitlement: me.entitlement,
-      record: await playerRecord(db, me.userId),
-      recent: await recentGames(db, me.userId),
+      record: await playerRecord(db, me.playerId),
+      recent: await recentGames(db, me.playerId),
     });
   }
 
@@ -601,11 +655,11 @@ async function handleAPI(request, env, url) {
     const body = await request.json().catch(() => ({}));
     const name = String(body.display_name ?? "").trim().slice(0, 32);
     if (!name) return json({ error: "A display name is required" }, 400);
-    await ensurePlayer(db, me.userId, me.email);
+    await ensurePlayer(db, me);
     if (db) {
       await db
-        .prepare("UPDATE players SET display_name = ?2, updated_at = ?3 WHERE user_id = ?1")
-        .bind(me.userId, name, Date.now())
+        .prepare("UPDATE players SET display_name = ?2, updated_at = ?3 WHERE player_id = ?1")
+        .bind(me.playerId, name, Date.now())
         .run();
     }
     return json({ display_name: name });
@@ -615,19 +669,13 @@ async function handleAPI(request, env, url) {
     const body = await request.json().catch(() => ({}));
     const baseMs = Math.max(0, Math.min(180, Number(body.minutes) || 0)) * 60_000;
     const incMs = Math.max(0, Math.min(60, Number(body.increment) || 0)) * 1000;
-    const player = await ensurePlayer(db, me.userId, me.email);
+    await ensurePlayer(db, me);
     const id = newGameId();
     await gameRoom(env, id).fetch(
       new Request("https://game.internal/_create", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          id,
-          baseMs,
-          incMs,
-          creatorId: me.userId,
-          creatorName: player.displayName,
-        }),
+        body: JSON.stringify({ id, baseMs, incMs }),
       }),
     );
     return json({ id });
@@ -642,7 +690,7 @@ async function handleAPI(request, env, url) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   4. THE GAME ROOM — one live match.
+   4. THE GAME ROOM: one live match.
 
    Every visitor of a game id reaches this same instance, so it owns both
    sockets and every broadcast. It handles one event at a time, so there is no
@@ -807,7 +855,7 @@ export class Game {
 
   async accept(request, url) {
     const me = identity(request);
-    const userId = me.userId || "anonymous";
+    const playerId = me.playerId;
     const seatHint = url.searchParams.get("seat");
 
     let { meta } = await this.readAll();
@@ -818,30 +866,41 @@ export class Game {
       await this.reset(meta);
     }
 
-    const player = await ensurePlayer(this.env.DB ?? null, me.userId, me.email);
+    const player = await ensurePlayer(this.env.DB ?? null, me);
     const name = player.displayName;
 
-    // Reconnecting returns you to your seat. Otherwise you take the first open
-    // one — and `?seat=` lets one person deliberately hold both, which is what
-    // makes a solo two-tab test work.
-    const openSeat = (seat) => (seat === "white" ? !meta.whiteId : !meta.blackId);
-    const ownSeat = (seat) => (seat === "white" ? meta.whiteId : meta.blackId) === userId;
-    let seat = "spectator";
-    if ((seatHint === "white" || seatHint === "black") && (openSeat(seatHint) || ownSeat(seatHint))) {
-      seat = seatHint;
-    } else if (meta.whiteId === userId) seat = "white";
-    else if (meta.blackId === userId) seat = "black";
-    else if (!meta.whiteId) seat = "white";
-    else if (!meta.blackId) seat = "black";
-
     let changed = false;
-    if (seat === "white" && (meta.whiteId !== userId || meta.whiteName !== name)) {
-      meta.whiteId = userId;
+    // A guest who signed in mid-match keeps the seats they took as a guest.
+    if (me.userId && me.guest) {
+      for (const key of ["whiteId", "blackId"]) {
+        if (meta[key] !== me.guest) continue;
+        meta[key] = me.userId;
+        changed = true;
+      }
+    }
+
+    // Reconnecting returns you to your seat. Otherwise you take the first open
+    // one, and `?seat=` lets one person deliberately hold both, which is what
+    // makes a solo two-tab test work. A visitor with no identity can only watch.
+    const openSeat = (seat) => (seat === "white" ? !meta.whiteId : !meta.blackId);
+    const ownSeat = (seat) => (seat === "white" ? meta.whiteId : meta.blackId) === playerId;
+    let seat = "spectator";
+    if (playerId) {
+      if ((seatHint === "white" || seatHint === "black") && (openSeat(seatHint) || ownSeat(seatHint))) {
+        seat = seatHint;
+      } else if (meta.whiteId === playerId) seat = "white";
+      else if (meta.blackId === playerId) seat = "black";
+      else if (!meta.whiteId) seat = "white";
+      else if (!meta.blackId) seat = "black";
+    }
+
+    if (seat === "white" && (meta.whiteId !== playerId || meta.whiteName !== name)) {
+      meta.whiteId = playerId;
       meta.whiteName = name;
       changed = true;
     }
-    if (seat === "black" && (meta.blackId !== userId || meta.blackName !== name)) {
-      meta.blackId = userId;
+    if (seat === "black" && (meta.blackId !== playerId || meta.blackName !== name)) {
+      meta.blackId = playerId;
       meta.blackName = name;
       changed = true;
     }
@@ -860,8 +919,8 @@ export class Game {
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
-    this.ctx.acceptWebSocket(server, [userId.slice(0, 60)]);
-    server.serializeAttachment({ userId, seat, name });
+    this.ctx.acceptWebSocket(server, playerId ? [playerId] : []);
+    server.serializeAttachment({ playerId, seat, name });
     await this.broadcast();
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -874,7 +933,7 @@ export class Game {
     } catch {
       return;
     }
-    const att = safeAttachment(ws) ?? { seat: "spectator", userId: "", name: "" };
+    const att = safeAttachment(ws) ?? { seat: "spectator", playerId: "", name: "" };
     const store = await this.readAll();
     if (!store.meta) return;
 
@@ -927,23 +986,20 @@ export class Game {
     const remaining = turnSeat === "white" ? live.whiteMs : live.blackMs;
 
     if (remaining > 0) {
-      // Woke early (or a move landed just in time) — re-arm and carry on.
+      // Woke early (or a move landed just in time): re-arm and carry on.
       await this.ctx.storage.setAlarm(now + remaining);
       return;
     }
+    await this.flagFall(meta, history, state);
+  }
 
-    clock.whiteMs = live.whiteMs;
-    clock.blackMs = live.blackMs;
-    clock.runningSince = null;
-    await this.ctx.storage.put("clock", clock);
-
-    const winner = turnSeat === "white" ? "black" : "white";
-    const winnerColor = turnSeat === "white" ? BLACK : WHITE;
-    if (hasMatingMaterial(state.board, winnerColor)) {
-      await this.finish(meta, history, winner, "timeout");
-    } else {
-      await this.finish(meta, history, "draw", "timeout vs insufficient material");
+  // The side to move ran out of time. finish() stops the clock at zero.
+  async flagFall(meta, history, state) {
+    const winner = state.turn === WHITE ? "black" : "white";
+    if (hasMatingMaterial(state.board, other(state.turn))) {
+      return this.finish(meta, history, winner, "timeout");
     }
+    return this.finish(meta, history, "draw", "timeout vs insufficient material");
   }
 
   // ── actions ──────────────────────────────────────────────────────────────
@@ -959,10 +1015,20 @@ export class Game {
     const turnSeat = state.turn === WHITE ? "white" : "black";
     if (att.seat !== turnSeat) return this.error(ws, "It is not your turn.");
 
+    // A move that reaches the room after the flag fell, but before the alarm
+    // did, loses on time rather than earning the increment.
+    const now = Date.now();
+    if (meta.baseMs) {
+      const live = clockNow(meta, clock, turnSeat, now);
+      if ((turnSeat === "white" ? live.whiteMs : live.blackMs) <= 0) {
+        return this.flagFall(meta, history, state);
+      }
+    }
+
     // Anti-stale guard: a client that missed a snapshot cannot move into a
     // position that no longer exists.
     if (typeof msg.ply === "number" && msg.ply !== history.length) {
-      return this.error(ws, "The board moved on — that move is out of date.");
+      return this.error(ws, "The board moved on, so that move is out of date.");
     }
 
     const from = squareFromName(msg.from);
@@ -984,7 +1050,6 @@ export class Game {
     const key = positionKey(next);
     reps[key] = (reps[key] ?? 0) + 1;
 
-    const now = Date.now();
     if (meta.baseMs) {
       const elapsed = clock.runningSince === null ? 0 : Math.max(0, now - clock.runningSince);
       if (turnSeat === "white") clock.whiteMs = Math.max(0, clock.whiteMs - elapsed) + meta.incMs;
@@ -1064,6 +1129,7 @@ export class Game {
     const next = {
       ...meta,
       gameNo: meta.gameNo + 1,
+      createdAt: Date.now(),
       whiteId: meta.blackId,
       whiteName: meta.blackName,
       blackId: meta.whiteId,
@@ -1222,8 +1288,8 @@ export class Game {
       legal: meta.status === "active" ? legalMap(legalMoves(state)) : {},
       lastMove: last ? { from: last.from, to: last.to } : null,
       check: inCheck(state, state.turn) ? turnSeat : null,
-      white: { id: meta.whiteId, name: meta.whiteName, connected: here.white },
-      black: { id: meta.blackId, name: meta.blackName, connected: here.black },
+      white: { seated: meta.whiteId !== "", name: meta.whiteName, connected: here.white },
+      black: { seated: meta.blackId !== "", name: meta.blackName, connected: here.black },
       spectators: here.spectators,
       history: history.map((entry) => ({ san: entry.san, from: entry.from, to: entry.to })),
       captured: capturedBy(history),
@@ -1243,8 +1309,8 @@ export class Game {
   sendState(ws, base) {
     const att = safeAttachment(ws) ?? {};
     const seat = att.seat ?? "spectator";
-    // Only the side to move is sent a legal-move map. Not a secret — anyone
-    // can derive it from the FEN — but a client is never handed moves it has
+    // Only the side to move is sent a legal-move map. Not a secret (anyone
+    // can derive it from the FEN), but a client is never handed moves it has
     // no business making, and spectators are sent nothing to click.
     const mine = base.status === "active" && seat === base.turn;
     try {
@@ -1252,7 +1318,7 @@ export class Game {
         JSON.stringify({
           ...base,
           legal: mine ? base.legal : {},
-          you: { userId: att.userId ?? "", seat, name: att.name ?? "" },
+          you: { seat, name: att.name ?? "" },
         }),
       );
     } catch {

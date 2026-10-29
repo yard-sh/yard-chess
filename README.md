@@ -7,14 +7,15 @@
 Online chess hosted end to end on Yard: create a match, send the link, play.
 Clocks with increment, resign, draw offers, rematch, and a win/loss/draw record
 per player. A static frontend, a fetch-handler backend, one realtime room per
-match, a per-project SQLite database, and Yard Auth for sign-in. There is no
-separate server, no auth code, and no build step.
+match, a per-project SQLite database, and Yard Auth for optional sign-in. There
+is no separate server, no auth code, and no build step.
 
 Use the link above, or paste this repository's URL into the Create from GitHub
 URL field of the Yard dashboard's Create Project dialog. Chess declares rooms
 (realtime state inside a service), which are part of Yard Basic and Pro, so
 creating it needs one of those plans. The project itself is free to play: one $0
-tier, so signing in is the only gate.
+tier and a public service, so whoever opens a match link plays straight away, as
+a guest or signed in.
 
 ## Layout
 
@@ -36,7 +37,7 @@ room type:
 
     "services": [
       { "dir": "play", "name": "play", "url": "/play",
-        "access": "authenticated", "database_access": true,
+        "access": "public", "database_access": true,
         "rooms": [{ "type": "Game", "binding": "GAMES" }] }
     ]
 
@@ -82,20 +83,34 @@ false and an alarm retries it. Structure that outlives a match (players, display
 names, finished games) is in `env.DB`; the live position, clocks and sockets stay
 in the room.
 
+**Guests and accounts.** The service is public, so nobody is sent to a sign-in
+page. A signed-out visitor asks the edge for a guest id (`POST
+__yard/auth/guest`), and from then on every request and socket from that browser
+carries `X-Yard-Guest-Id`. A player is keyed by their Yard user id, or by
+`guest:<guest id>` while signed out, so guests get seats, a name and a record
+like anyone else. Signing in (the link in the lobby and the profile dialog)
+comes back to the same page, and the next request that carries both ids moves
+the guest's games and name to the account. The guest id is kept, so a seat taken
+as a guest in a match still in progress follows the player to their account. A
+visitor with neither id, such as a socket opened from another site, can only
+watch.
+
 **Seats, and playing yourself.** The first two people to open a match link take
 white and black; anyone after that watches. Reconnecting returns you to your own
 seat. `?seat=` lets one person deliberately hold both, which is what the "Or take
 the other seat yourself" button on the waiting screen uses. A game where both
-seats are the same user is not a real result and is never written to anyone's
-record.
+seats are the same player is not a real result and is never written to anyone's
+record. Snapshots say whether a seat is taken, never who holds it, because a
+guest id is all it takes to act as that guest.
 
 Two details worth knowing before editing:
 
 - **Relative URLs only.** The app is mounted at `/yard-chess/play/`, and one
   segment deeper again inside a sandbox, so every request is built from the
-  page's own URL, never from a leading slash. Match selection lives in
-  `location.hash` for the same reason. `yard service check` lints fetches and
-  links, not socket URLs.
+  page's own URL, never from a leading slash. The open match is the page's own
+  `?game=` parameter, which also survives a sign-in round trip (`return` keeps
+  a path and its query); links from older versions used `#/g/<id>` and still
+  open. `yard service check` lints fetches and links, not socket URLs.
 - **The type name is the identity.** Renaming `Game` in `settings.json` drops
   every match in progress at the next deploy; `yard push` warns before it does.
   Finished games are rows in the database and survive. Change the `binding` if
@@ -114,21 +129,21 @@ There is no sign-in code in this repo. Yard Auth signs people in (a consent
 screen the first time, silent after that) and hands the service trusted
 `X-Yard-*` headers; locally a **persona** stands in for it:
 
-| Persona     | Who they are           |
-| ----------- | ---------------------- |
-| `signed-in` | a signed-in visitor    |
-| `trial`     | someone on a trial     |
+| Persona     | Who they are             |
+| ----------- | ------------------------ |
+| `anonymous` | a signed-out guest       |
+| `signed-in` | a signed-in visitor      |
 | `user:base` | someone on the Base tier |
-| `member`    | you, the project owner |
+| `member`    | you, the project owner   |
 
 Pick one up front with `yard dev --as signed-in`, or switch at
 `http://localhost:9875/yard-chess/play/__yard/auth/login`.
 
-A persona is a cookie, so it is per browser profile: two tabs in the same window
-are the same player. To get two players onto one board, either open the match
-link in a normal window and again in a private window and pick a different
-persona in the second, or create a match and click "Or take the other seat
-yourself" to hold both seats at once.
+A persona is a cookie, and so is the guest id, so both are per browser profile:
+two tabs in the same window are the same player. To get two players onto one
+board, open the match link in a normal window and again in a private window
+(two guests, or pick a different persona in the second), or create a match and
+click "Or take the other seat yourself" to hold both seats at once.
 
 Every save restarts the local runtime, which drops every open socket; the client
 reconnects on its own, which is the same path it takes when a hosted session

@@ -91,17 +91,29 @@ const REASON_TEXT = {
 
 /* ── Profile ─────────────────────────────────────────────────────────────── */
 
+// A signed-out visitor plays as a guest: the edge issues the browser a guest id
+// and sends it with every request from then on, sockets included.
+async function fetchProfile() {
+  let response = await api("api/me");
+  if (response.status === 401) {
+    await api("__yard/auth/guest", { method: "POST" });
+    response = await api("api/me");
+  }
+  if (!response.ok) throw new Error(String(response.status));
+  return response.json();
+}
+
 async function loadProfile() {
   try {
-    const response = await api("api/me");
-    if (!response.ok) throw new Error(String(response.status));
-    profile = await response.json();
+    profile = await fetchProfile();
   } catch {
     profile = null;
-    $("profile-name").textContent = "Not signed in";
+    $("profile-name").textContent = "Offline";
     $("profile-record").textContent = "";
+    paintAccount();
     return;
   }
+  paintAccount();
   const { display_name: name, record } = profile;
   const line = `${record.wins}W · ${record.losses}L · ${record.draws}D`;
   $("avatar").textContent = initials(name);
@@ -140,18 +152,38 @@ function renderGameList(target, games) {
   }
 }
 
+// Sign-in and sign-out come back to this same page, the open match included.
+// `return` is a path under the service, which is where this page lives.
+function authHref(action) {
+  const back = `/${location.search}`;
+  return new URL(`__yard/auth/${action}?return=${encodeURIComponent(back)}`, BASE).href;
+}
+
+function paintAccount() {
+  const signedIn = !!profile?.signed_in;
+  $("guest-hint").hidden = !profile || signedIn;
+  $("guest-signin").href = authHref("login");
+  $("account-text").textContent = signedIn
+    ? "Your record is kept on your Yard account."
+    : "Playing as a guest. Sign in to keep your record on every device.";
+  const link = $("account-link");
+  link.textContent = signedIn ? "Sign out" : "Sign in";
+  link.href = authHref(signedIn ? "logout" : "login");
+  link.classList.toggle("btn-primary", !signedIn);
+}
+
 function openProfile() {
-  if (!profile) return toast("Sign in to see your profile.");
+  if (!profile) return toast("Could not load your profile. Try again.");
   const { display_name: name, email, record, recent } = profile;
   $("dialog-avatar").textContent = initials(name);
   $("dialog-name").textContent = name;
-  $("dialog-email").textContent = email || "";
+  $("dialog-email").textContent = profile.signed_in ? email || "" : "Guest";
   $("rec-wins").textContent = record.wins;
   $("rec-losses").textContent = record.losses;
   $("rec-draws").textContent = record.draws;
   $("rec-total").textContent = record.played
     ? `${record.played} game${record.played === 1 ? "" : "s"} played.`
-    : "No games yet — start one and send the link.";
+    : "No games yet. Start one and send the link.";
   $("name-input").value = name;
   renderGameList($("dialog-games"), recent ?? []);
   $("profile-dialog").showModal();
@@ -197,7 +229,7 @@ $("create-btn").addEventListener("click", async () => {
     });
     if (!response.ok) throw new Error(String(response.status));
     const { id } = await response.json();
-    location.hash = `#/g/${id}`;
+    navigate(`?game=${id}`);
   } catch {
     toast("Could not create the match. Try again.");
   } finally {
@@ -285,7 +317,7 @@ function disconnect() {
 
 function send(payload) {
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
-  else toast("Not connected — hold on.");
+  else toast("Not connected. Hold on.");
 }
 
 function handleMove(from, to, needsPromotion) {
@@ -513,7 +545,7 @@ function paintShare(snap) {
   // Taking both seats is genuinely useful (play both sides, or try it out
   // alone) and it is what makes a single-persona local test work. Such a game
   // is never written to anyone's record.
-  $("second-seat-btn").hidden = !(snap.you.seat === "white" && !snap.black.id);
+  $("second-seat-btn").hidden = !(snap.you.seat === "white" && !snap.black.seated);
 }
 
 $("copy-btn").addEventListener("click", async () => {
@@ -623,20 +655,37 @@ $("name-form").addEventListener("submit", async (event) => {
 
 $("promotion-dialog").addEventListener("close", () => {
   promoChoice = null;
-  // Dismissed without choosing — but if a move already went out, the lock
+  // Dismissed without choosing, but if a move already went out, the lock
   // belongs to that move and is released by its snapshot.
   if (!pending) releaseMoveLock();
 });
 
 /* ── Boot ────────────────────────────────────────────────────────────────── */
 
+// The match is a query parameter, so it survives a sign-in round trip, which
+// only ever returns a path and its query. Links from before used the hash.
 function route() {
-  const match = location.hash.match(/^#\/g\/([a-z0-9]+)$/i);
-  if (match) showGame(match[1]);
+  const legacy = location.hash.match(/^#\/g\/([a-z0-9]+)$/i);
+  if (legacy) history.replaceState(null, "", new URL(`?game=${legacy[1]}`, BASE));
+  const id = new URLSearchParams(location.search).get("game");
+  if (id && /^[a-z0-9]+$/i.test(id)) showGame(id);
   else showLobby();
+  paintAccount();
 }
 
-window.addEventListener("hashchange", route);
+function navigate(url) {
+  history.pushState(null, "", new URL(url, BASE));
+  route();
+}
+
+document.addEventListener("click", (event) => {
+  const link = event.target.closest("a[data-route]");
+  if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+  event.preventDefault();
+  navigate(link.getAttribute("href"));
+});
+
+window.addEventListener("popstate", route);
 
 await loadProfile();
 route();

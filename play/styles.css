@@ -1,4 +1,4 @@
-/* Yard Chess — charcoal club room: a rail on the left, the board as the room's
+/* Yard Chess, a charcoal club room: a rail on the left, the board as the room's
    centre, green for the one thing you should press next. */
 
 :root {
@@ -675,6 +675,7 @@ svg {
   font: inherit;
   font-size: 14px;
   font-weight: 700;
+  text-decoration: none;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.12s ease, color 0.12s ease;
@@ -763,6 +764,15 @@ svg {
   font-size: 13px;
   color: var(--ink-3);
   text-align: center;
+}
+
+.hint-link {
+  color: var(--ink-2);
+  font-weight: 700;
+}
+
+.hint-link:hover {
+  color: var(--ink);
 }
 
 .icon-btn {
@@ -1093,6 +1103,22 @@ svg {
   margin: 10px 0 0;
   font-size: 13px;
   text-align: center;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 22px;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+
+.account p {
+  margin: 0;
+  font-size: 13px;
 }
 
 .name-form {
