@@ -136,7 +136,7 @@ screen the first time, silent after that) and hands the service trusted
 | `anonymous` | a signed-out guest       |
 | `signed-in` | a signed-in visitor      |
 | `user:base` | someone on the Base tier |
-| `member`    | you, the project owner   |
+| `team`      | you, a team member       |
 
 Pick one up front with `yard dev --as signed-in`, or switch at
 `http://localhost:9875/yard-chess/play/__yard/auth/login`.
