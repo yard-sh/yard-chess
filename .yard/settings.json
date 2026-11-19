@@ -1,8 +1,13 @@
 {
-  "version": 9,
+  "version": 10,
   "project_slug": "yard-chess",
   "ignore_files": [],
   "services": [
+    {
+      "dir": ".yard/landing-page",
+      "name": "landing-page",
+      "url": "/"
+    },
     {
       "dir": "play",
       "name": "play",
@@ -17,8 +22,9 @@
       ]
     }
   ],
-  "landing_page": { "dir": ".yard/landing-page" },
-  "migrations": { "dir": ".yard/migrations" },
+  "migrations": {
+    "dir": ".yard/migrations"
+  },
   "pricing": {
     "tiers": [
       {
